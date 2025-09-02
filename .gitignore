@@ -5,7 +5,14 @@ __pycache__
 .DS_Store
 .env*
 !.env.example
-data/
+
+data/abt/
+data/processed/
+data/raw/balance_sheets/
+data/raw/company_profiles/
+data/raw/income_statements/
+data/raw/price_history/
+
 .ipynb_checkpoints/
 notebooks/
 tmp_*
