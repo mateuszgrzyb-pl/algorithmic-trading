@@ -13,6 +13,16 @@ from src.data_preprocessing.data_loader import (
 
 
 def main():
+    """
+    Main script to download financial data for S&P 500 companies.
+
+    It fetches a list of tickers, checks which ones are already downloaded,
+    and then downloads the missing data for:
+    - Price history
+    - Balance sheets
+    - Income statements
+    - Company profiles
+    """
     tickers_df = pd.read_csv('../../data/raw/tickers_sp500.csv')
     tickers_df = tickers_df['tickers'].drop_duplicates()
     tickers = []
