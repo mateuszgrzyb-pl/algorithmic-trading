@@ -89,72 +89,85 @@ def calculate_portfolio_xirr(df: pd.DataFrame, X, pred, best_thresh, label, labe
             - "profit" (float): Profit = final capital - invested capital.
     """
     stocks = df.loc[X.index].copy()
-    stocks = stocks.sort_values("date")
-    stocks["score"] = pred
-    stocks["end_date"] = stocks[f"{label}_event_date"].astype(str)
-    stocks["end_adj_close"] = stocks["adj_close"] + (stocks["adj_close"] * (stocks[f"{label}_pct_change"] / 100.0))
-    cols = ["date", "end_date", "ticker", f"{label}_pct_change", "adj_close", "end_adj_close"]
-
-    candidates = stocks[stocks["score"] > best_thresh]
-    if candidates.empty:
-        return {"log": pd.DataFrame(), "xirr_percent": 0.0, "total_amount_invested": 0, "final_capital": 0, "profit": 0}
-
-    candidates = candidates.loc[candidates.groupby("date")["score"].idxmax()][cols]
-
-    # normalizacja dat do period-end (quarterly) if possible
-    candidates["date"] = pd.to_datetime(candidates["date"], errors="coerce")
-    candidates["date"] = pd.PeriodIndex(candidates["date"].dt.to_period("Q")).to_timestamp(how="end").dt.date.astype(str)
-    unique_dates = sorted(set(candidates["date"].tolist() + candidates["end_date"].tolist()))
-
+    max_buy_date = (stocks['date'].max().to_timestamp(how='end') - pd.DateOffset(months=label_length))
+    stocks['score'] = pred
+    stocks['end_date'] = stocks[f'{label}_event_date'].astype(str)
+    stocks['end_adj_close'] = stocks.adj_close + (stocks.adj_close * (stocks[f'{label}_pct_change']/100))
+    cols = ['date', 'end_date', 'ticker', f'{label}_pct_change', 'adj_close', 'end_adj_close']
+    stocks = stocks.loc[stocks['score'] > best_thresh]
+    stocks = stocks.loc[stocks.groupby('date')['score'].idxmax()][cols]
+    stocks['date'] = stocks['date'].astype(str)
+    stocks['date'] = pd.PeriodIndex(stocks['date'], freq='Q').to_timestamp(how='end').date.astype(str)
+    unique_dates = np.unique(stocks['date'].tolist() + stocks['end_date'].tolist())
     total_amount_invested = 0
     capital = 0
-    wallet: Dict[str, Dict[str, Any]] = {}
+    wallet = {}
     log = []
 
-    # maksymalna granica buy date
-    max_buy_date = pd.to_datetime(stocks["date"].max()) - pd.DateOffset(months=label_length)
+    for i, todays_date in enumerate(unique_dates):
+        # 1. Sprzedaż akcji (jeśli możliwa).
+        stock_to_sell = wallet.get(todays_date)  # pobieram akcje do sprzedania
+        if stock_to_sell is not None:  # gdy są jakieś akcje do sprzedania
+            # 1.1. Pobieram akcje.
+            stock_ticker = stock_to_sell['ticker']
+            stock_buy_price = stock_to_sell['buy_price']
+            stock_sell_price = stock_to_sell['sell_price']
+            stock_num_of_shares = stock_to_sell['num_of_shares']
 
-    for todays_date in unique_dates:
-        # sprzedaż
-        stock_to_sell = wallet.pop(todays_date, None)
-        if stock_to_sell:
-            total_amount = stock_to_sell["num_of_shares"] * stock_to_sell["sell_price"]
-            capital += total_amount
-            log.append([todays_date, "sprzedaż", stock_to_sell["ticker"], stock_to_sell["sell_price"],
-                        stock_to_sell["num_of_shares"], total_amount, capital - total_amount, capital])
+            # 1.2. Aktualizuję stan konta.
+            total_amount = stock_num_of_shares * stock_sell_price
+            capital = capital + total_amount
 
-        # kupno
-        if todays_date in candidates["date"].values and pd.to_datetime(todays_date) <= max_buy_date:
-            capital += investment_amount
+            # 1.3. Usuwam akcje z portfela.
+            del wallet[todays_date]
+
+            # dodanie loga
+            log.append([todays_date, 'sprzedaż', stock_ticker, stock_sell_price, stock_num_of_shares, total_amount, capital-total_amount, capital])
+
+        # 2. Kupno akcji.
+        if (todays_date in stocks['date'].tolist()) & (pd.to_datetime(todays_date) <= max_buy_date):
+            capital += investment_amount  # dodaję kapitał
             total_amount_invested += investment_amount
-            stock_to_buy = candidates[candidates["date"] == todays_date].iloc[0]
-            stock_ticker = stock_to_buy["ticker"]
-            stock_buy_price = float(stock_to_buy["adj_close"])
-            stock_sell_price = float(stock_to_buy["end_adj_close"])
-            stock_sell_date = stock_to_buy["end_date"]
-            num_shares = int(np.floor(capital / stock_buy_price))
-            if num_shares > 0:
-                total_amount = num_shares * stock_buy_price
-                capital -= total_amount
+
+            # 2.1. Pobieram akcje.
+            stock_to_buy = stocks[stocks['date'] == todays_date]
+            stock_ticker = stock_to_buy['ticker'].values[0]
+            stock_buy_price = stock_to_buy['adj_close'].values[0]
+            stock_sell_price = stock_to_buy['end_adj_close'].values[0]
+            stock_sell_date = stock_to_buy['end_date'].values[0]
+            stock_num_of_shares = int(np.floor(capital/stock_buy_price))
+
+            if stock_num_of_shares > 0:
+                # 2.2. Aktualizuję stan konta.
+                total_amount = stock_num_of_shares * stock_buy_price
+                capital = capital - total_amount
+
+                # 2.3. Dodaje akcje do portfela.
                 wallet[stock_sell_date] = {
-                    "ticker": stock_ticker,
-                    "buy_price": stock_buy_price,
-                    "sell_price": stock_sell_price,
-                    "num_of_shares": num_shares,
-                    "buy_date": todays_date,
-                }
-                log.append([todays_date, "kupno", stock_ticker, stock_buy_price, num_shares, -total_amount, capital + total_amount, capital])
+                    'ticker': stock_ticker,
+                    'buy_price': stock_buy_price,
+                    'sell_price': stock_sell_price,
+                    'num_of_shares': stock_num_of_shares,
+                    'buy_date': todays_date}
 
-    log_df = pd.DataFrame(log, columns=["data", "operacja", "ticker", "cena", "liczba_sztuk", "kwota_calkowita", "stan_konta_przed", "stan_konta_po"])
-    if log_df.empty:
-        xirr_percent = 0.0
+                # dodanie loga
+                log.append([todays_date, 'kupno', stock_ticker, stock_buy_price, stock_num_of_shares, -total_amount, capital+total_amount, capital])
+
+    log = pd.DataFrame(log, columns=['data', 'operacja', 'ticker', 'cena', 'liczba_sztuk', 'kwota_calkowita', 'stan_konta_przed', 'stan_konta_po'])
+    if log.empty:
+        srednioroczny_zwrot = 0
     else:
-        log_df["data"] = pd.to_datetime(log_df["data"])
-        try:
-            xirr_value = xirr(log_df[["data", "kwota_calkowita"]])
-            xirr_percent = round(xirr_value * 100, 2) if xirr_value is not None else 0.0
-        except Exception:
-            xirr_percent = 0.0
-
+        log['data'] = pd.to_datetime(log['data'])
+        xirr_value = xirr(log[['data', 'kwota_calkowita']])
+        if xirr_value is not None:
+            srednioroczny_zwrot = np.round(xirr_value * 100, 2)
+        else:
+            srednioroczny_zwrot = 0.0
     profit = capital - total_amount_invested
-    return {"log": log_df, "xirr_percent": xirr_percent, "total_amount_invested": total_amount_invested, "final_capital": capital, "profit": profit}
+    return {
+        'log': log,
+        'xirr_percent': srednioroczny_zwrot,
+        'total_amount_invested': total_amount_invested,
+        'final_capital': capital,
+        'profit': profit
+    }
