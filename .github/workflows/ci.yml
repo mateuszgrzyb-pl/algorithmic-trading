@@ -27,7 +27,7 @@ jobs:
 
       # 4. Instalacja zależności z "poetry.lock".
       - name: Instalacja zależności
-        run: poetry install --no-interaction
+        run: poetry install --no-root
 
       # 5. Uruchomienie testów.
       - name: Uruchomienie testów
