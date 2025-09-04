@@ -36,16 +36,13 @@ class Settings(BaseSettings):
     Aggregates all configuration parameters and loads them from environment
     variables or a .env file, providing a single, type-safe source of truth.
     """
-    # --- Existing Settings ---
     finance_toolkit_key: str
     analysis_start_date: Optional[date] = None
     analysis_end_date: Optional[date] = None
 
-    # --- New Pipeline Settings ---
     base_path: Path = Path("data")
     target_label_name: str = "label_1000_100_250"
 
-    # --- Nested Configuration Models ---
     label_params: LabelParams = LabelParams()
     overlap_params: OverlapParams = OverlapParams()
 
@@ -55,9 +52,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=str(ENV_FILE_PATH) if ENV_FILE_PATH.exists() else None,
         env_file_encoding="utf-8",
-        env_nested_delimiter='__'  # Crucial for overriding nested settings
+        env_nested_delimiter='__'
     )
 
 
-# A single, global instance of the settings to be imported across the application.
 settings = Settings()

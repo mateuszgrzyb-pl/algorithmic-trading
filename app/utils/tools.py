@@ -7,6 +7,10 @@ import pandas as pd
 from pyxirr import xirr
 
 
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 
@@ -446,4 +450,53 @@ def filter_sp500_companies(
         raise
     except KeyError as e:
         logger.error(f"A required column is missing from the input data: {e}")
+        raise
+
+
+def load_sp500_tickers(csv_path: str = 'data/raw/tickers_sp500.csv') -> List[str]:
+    """
+    Load and parse S&P 500 tickers from CSV file.
+
+    Args:
+        csv_path: Path to CSV file containing S&P 500 tickers
+
+    Returns:
+        List of unique ticker symbols
+
+    Raises:
+        FileNotFoundError: If CSV file doesn't exist
+        ValueError: If CSV file is empty or malformed
+    """
+    try:
+        logger.info(f"Loading tickers from: {csv_path}")
+
+        if not Path(csv_path).exists():
+            raise FileNotFoundError(f"Ticker CSV file not found: {csv_path}")
+
+        tickers_df = pd.read_csv(csv_path)
+
+        if 'tickers' not in tickers_df.columns:
+            raise ValueError("CSV file must contain 'tickers' column")
+
+        tickers_df = tickers_df['tickers'].drop_duplicates()
+        tickers = []
+
+        for row in tickers_df:
+            if pd.isna(row):
+                continue
+            for ticker in str(row).split(','):
+                ticker = ticker.strip().upper()
+                if ticker:
+                    tickers.append(ticker)
+
+        unique_tickers = np.unique(tickers).tolist()
+        logger.info(f"Loaded {len(unique_tickers)} unique tickers")
+
+        if not unique_tickers:
+            raise ValueError("No valid tickers found in CSV file")
+
+        return unique_tickers
+
+    except Exception as e:
+        logger.error(f"Failed to load tickers: {str(e)}")
         raise

@@ -1,53 +1,81 @@
+import logging
+from typing import List
 import pandas as pd
+
+from app.config import settings
 from app.feature_engineering.labeling import triple_barrier_labeling_custom
 
+logger = logging.getLogger(__name__)
 
-def build_triple_barier_labels_custom(ticker, profit_targets, stop_loses, max_days, overwrite=False, verbose=False):
+
+def build_triple_barier_labels_custom(
+    ticker: str,
+    profit_targets: List[float],
+    stop_losses: List[float],
+    max_days_list: List[int],
+    overwrite: bool = False
+) -> None:
     """
-    Funkcja hurtowo dodaje labele do danych cenowych i zapisuje nowe pliki z etykietami.
+    Generates and saves triple barrier labels for a given stock ticker.
 
-    Parameters:
-    - ticker (str): Symbol ticker’a.
-    - profit_targets (list of float): Lista procentowych celów zysku.
-    - stop_loses (list of float): Lista procentowych limitów straty.
-    - max_days (list of int): Lista maksymalnych liczby dni do etykietowania.
-    - overwrite (bool): Czy nadpisać istniejące pliki z etykietami. Domyślnie False.
-    - verbose (bool): Czy wyświetlać komunikaty informacyjne. Domyślnie False.
+    This function reads historical price data, iterates through a combination of
+    profit targets, stop losses, and time horizons (max_days), and applies the
+    triple barrier labeling method for each combination. The resulting DataFrame,
+    enriched with multiple label sets, is saved to a new location.
+
+    Args:
+        ticker (str): The stock ticker symbol to process (e.g., 'AAPL').
+        profit_targets (List[float]): A list of profit-take percentages.
+        stop_losses (List[float]): A list of stop-loss percentages.
+        max_days_list (List[int]): A list of maximum holding periods (vertical barrier).
+        overwrite (bool): If True, existing label files will be overwritten.
+                          If False, the function will skip processing if the
+                          output file already exists. Defaults to False.
 
     Returns:
-    - None
+        None. The function saves the output to a file.
+
+    Raises:
+        FileNotFoundError: If the input price history file for the ticker does not exist.
+        ValueError: If the lengths of profit_targets, stop_losses, and max_days_list
+                    are not equal.
     """
-    # Ścieżki do plików
-    input_path = f'data/raw/price_history/STAGE_1/{ticker}.feather'
-    output_path = f'data/raw/price_history/STAGE_2/{ticker}.feather'
+    if not (len(profit_targets) == len(stop_losses) == len(max_days_list)):
+        raise ValueError("Input lists (profit_targets, stop_losses, max_days_list) must have the same length.")
 
-    # Wczytanie danych
-    data = pd.read_feather(input_path)
+    input_path = settings.base_path / "data" / "raw" / "price_history" / "STAGE_1" / f"{ticker}.feather"
+    output_path = settings.base_path / "data" / "raw" / "price_history" / "STAGE_2" / f"{ticker}.feather"
 
-    # Sprawdzenie, czy należy przetworzyć ticker
-    if overwrite:
-        for n in range(len(profit_targets)):
-            profit_target = profit_targets[n]
-            stop_loss = stop_loses[n]
-            max_day = max_days[n]
+    if not overwrite and output_path.exists():
+        logger.info(f"Labels for {ticker} already exist. Skipping. Use overwrite=True to regenerate.")
+        return
 
-            label_prefix = f'label_{profit_target}_{stop_loss}_{max_day}'
+    if not input_path.exists():
+        logger.error(f"Input price data for {ticker} not found at {input_path}. Skipping.")
+        raise FileNotFoundError(f"Input file not found: {input_path}")
 
-            # Dodanie etykiet za pomocą zaktualizowanej funkcji
+    logger.info(f"Processing {ticker}: Generating {len(profit_targets)} sets of labels.")
+
+    try:
+        data = pd.read_feather(input_path)
+
+        for pt, sl, md in zip(profit_targets, stop_losses, max_days_list):
+            label_prefix = f'label_{pt}_{sl}_{md}'
+            logger.debug(f"Generating labels for {ticker} with prefix: {label_prefix}")
+
             data = triple_barrier_labeling_custom(
                 df=data,
                 price_col='adj_close',
                 label_name=label_prefix,
                 date_col='date',
-                profit_target=profit_target,
-                stop_loss=stop_loss,
-                max_days=max_day
+                profit_target=pt,
+                stop_loss=sl,
+                max_days=md
             )
-        # Zapisanie danych z etykietami
-        data.to_feather(output_path)
 
-        if verbose:
-            print(f'Zapisano labele dla {ticker} do {output_path}')
-    else:
-        if verbose:
-            print(f'Etykiety dla {ticker} już istnieją. Użyj overwrite=True, aby nadpisać.')
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        data.to_feather(output_path)
+        logger.info(f'Successfully saved labeled data for {ticker} to {output_path}')
+
+    except Exception as e:
+        logger.error(f"An unexpected error occurred while processing {ticker}: {e}", exc_info=True)

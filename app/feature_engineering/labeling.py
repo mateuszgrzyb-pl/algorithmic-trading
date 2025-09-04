@@ -1,34 +1,57 @@
 import pandas as pd
+from typing import Optional
 
 
-def triple_barrier_labeling_custom(df, price_col, label_name, date_col=None, profit_target=40, stop_loss=20, max_days=250):
+def triple_barrier_labeling_custom(
+    df: pd.DataFrame,
+    price_col: str,
+    label_name: str,
+    date_col: Optional[str] = None,
+    profit_target: float = 40.0,
+    stop_loss: float = 20.0,
+    max_days: int = 250
+) -> pd.DataFrame:
     """
-    Implementacja Triple Barrier Method dostosowana do specyficznych założeń, z dodatkowymi kolumnami:
-    - Data osiągnięcia zdarzenia (stop loss, profit target lub data po max_days).
-    - Procentowa zmiana w cenie w momencie osiągnięcia zdarzenia.
+    Implements a custom Triple Barrier Method (first introduced by Marcos López de Prado) to generate labels for financial time series.
 
-    Parameters:
-    - df (pd.DataFrame): DataFrame z kolumną cenową oraz opcjonalnie kolumną daty.
-    - price_col (str): Nazwa kolumny z ceną.
-    - label_name (str): Nazwa / prefiks nowej zmiennej.
-    - date_col (str, optional): Nazwa kolumny z datą. Jeśli None, zakłada się, że DataFrame ma indeks datowy.
-    - profit_target (float): Procentowy cel zysku (domyślnie 40 dla 40%).
-    - stop_loss (float): Procentowy limit straty (domyślnie 20 dla 20%).
-    - max_days (int): Maksymalna liczba dni handlowych do etykietowania (domyślnie 250).
+    This method assigns a label {-1, 0, 1} to each price point based on future
+    price movements. The barriers are:
+    1. Upper Barrier (Profit Take): A target price increase.
+    2. Lower Barrier (Stop Loss): A maximum acceptable price decrease.
+    3. Vertical Barrier (Time Limit): A maximum number of days to hold the position.
+
+    The logic is as follows:
+    - The stop-loss is a "first-touch" barrier. If the price hits the stop-loss
+      threshold at any point within `max_days`, the event is triggered, and the
+      label is -1.
+    - The profit-target is evaluated ONLY at the end of the `max_days` window.
+      If the stop-loss was not triggered, the price at `t + max_days` is checked.
+      If it meets or exceeds the profit target, the label is 1; otherwise, it is 0.
+
+    Args:
+        df (pd.DataFrame): Input DataFrame containing price and optional date columns.
+        price_col (str): The name of the column with price data.
+        label_name (str): The prefix for the new columns that will be created.
+        date_col (str, optional): The name of the date column. If None, the function
+                                  assumes a DatetimeIndex. Defaults to None.
+        profit_target (float): The percentage profit target (e.g., 40 for 40%).
+        stop_loss (float): The percentage stop-loss limit (e.g., 20 for 20%).
+        max_days (int): The maximum number of trading days for the vertical barrier.
 
     Returns:
-    - pd.DataFrame: DataFrame z dodanymi kolumnami:
-        - '{label_name}_target': Zmienna celu z wartościami {1, -1, 0}.
-        - '{label_name}_final_price': Cena końcowa, która spowodowała przypisanie etykiety.
-        - '{label_name}_days_to_event': Liczba dni do zdarzenia (250 dni dla zysku lub brak zdarzenia, lub liczba dni do osiągnięcia stop loss).
-        - '{label_name}_event_date': Data osiągnięcia zdarzenia (stop loss, profit target lub data po max_days).
-        - '{label_name}_pct_change': Procentowa zmiana w momencie osiągnięcia zdarzenia.
+        pd.DataFrame: The original DataFrame with the following new columns added:
+            - `{label_name}_target`: The final label {-1, 0, 1}.
+            - `{label_name}_final_price`: The price at which the event was triggered.
+            - `{label_name}_days_to_event`: Number of days until the barrier was hit.
+            - `{label_name}_event_date`: The date when the event occurred.
+            - `{label_name}_pct_change`: The percentage price change at the event time.
     """
+    df = df.copy()
     profit_target /= 100
     stop_loss /= 100
     n = len(df)
 
-    # Inicjalizacja list dla nowych kolumn
+    # Initialize new columns
     labels = [0] * n
     final_prices = df[price_col].values.copy()
     days_to_events = [max_days] * n
@@ -42,7 +65,7 @@ def triple_barrier_labeling_custom(df, price_col, label_name, date_col=None, pro
         current_price = prices[i]
         stop_triggered = False
 
-        # Sprawdzenie warunku stop loss w trakcie max_days
+        # Checking the STOP LOSS condition during max_days
         for j in range(1, min(max_days + 1, n - i)):
             future_price_j = prices[i + j]
             change_j = (future_price_j - current_price) / current_price
@@ -55,7 +78,7 @@ def triple_barrier_labeling_custom(df, price_col, label_name, date_col=None, pro
                 stop_triggered = True
                 break
 
-        # Sprawdzenie wzrostu po max_days, jeśli stop loss nie wystąpił
+        # Checking gwoth after max_days, if stop loss did not occur
         if not stop_triggered and i + max_days < n:
             future_price = prices[i + max_days]
             change = (future_price - current_price) / current_price
@@ -65,7 +88,7 @@ def triple_barrier_labeling_custom(df, price_col, label_name, date_col=None, pro
             event_dates[i] = dates[i + max_days]
             pct_changes[i] = change * 100
 
-        # Obsługa przypadku, gdy nie ma wystarczającej liczby dni
+        # Case handling when there is not enough days
         elif not stop_triggered:
             labels[i] = 0  # Użyj 0 zamiast None
             final_prices[i] = prices[-1]
@@ -73,7 +96,7 @@ def triple_barrier_labeling_custom(df, price_col, label_name, date_col=None, pro
             event_dates[i] = dates[-1]
             pct_changes[i] = ((prices[-1] - current_price) / current_price) * 100
 
-    # Dodanie nowych kolumn do DataFrame
+    # Adding new columns to DataFrame
     df[f'{label_name}_target'] = labels
     df[f'{label_name}_final_price'] = final_prices
     df[f'{label_name}_days_to_event'] = days_to_events

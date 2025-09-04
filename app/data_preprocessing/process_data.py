@@ -22,12 +22,7 @@ from app.config import settings
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] - %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-    handlers=[
-        logging.FileHandler("pipeline.log"),  # Save logs to a file
-        logging.StreamHandler()               # Also print logs to the console
-    ]
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
 
