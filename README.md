@@ -8,6 +8,9 @@ This repository contains my personal project focused on building a **full machin
 
 ⚠️ **Note:** Financial datasets used in this project are **not published here** due to licensing and storage considerations. The code and methodology are fully open, allowing replication with your own API keys and data access.
 
+This repository uses [GitHub Actions](https://docs.github.com/en/actions) for continuous integration.  
+Every commit and pull request automatically triggers unit tests to ensure correctness and stability of the codebase.  
+
 ---
 
 ## Overview
