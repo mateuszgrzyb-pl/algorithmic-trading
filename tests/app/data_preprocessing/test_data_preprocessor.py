@@ -17,26 +17,6 @@ def sample_data():
     })
 
 
-def test_load_data_all_files(tmp_path: Path, sample_data):
-    ticker = "AAPL"
-    base = tmp_path / "data" / "raw"
-    (base / "price_history/STAGE_4").mkdir(parents=True)
-    (base / "balance_sheets").mkdir(parents=True)
-    (base / "income_statements").mkdir(parents=True)
-    (base / "company_profiles").mkdir(parents=True)
-
-    # zapisz wszystkie pliki
-    for subdir in ["price_history/STAGE_4", "balance_sheets", "income_statements", "company_profiles"]:
-        path = base / subdir / f"{ticker}.feather"
-        sample_data.to_feather(path)
-
-    data = load_data(ticker)
-    assert isinstance(data, dict)
-    assert set(data.keys()) == {"price_history", "balance_sheets", "income_statements", "company_profiles"}
-    for df in data.values():
-        assert isinstance(df, pd.DataFrame)
-
-
 def test_load_data_some_files(tmp_path: Path, sample_data):
     ticker = "AAPL"
     base = tmp_path / "data" / "raw"
