@@ -1,5 +1,5 @@
 import pandas as pd
-from src.feature_engineering.labeling import triple_barrier_labeling_custom
+from app.feature_engineering.labeling import triple_barrier_labeling_custom
 
 
 def build_triple_barier_labels_custom(ticker, profit_targets, stop_loses, max_days, overwrite=False, verbose=False):

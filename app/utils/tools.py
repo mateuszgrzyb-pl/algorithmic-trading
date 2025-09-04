@@ -1,8 +1,13 @@
+import logging
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Set
+
 import numpy as np
 import pandas as pd
 from pyxirr import xirr
+
+
+logger = logging.getLogger(__name__)
 
 
 def standardize_column_names(columns: List[str]) -> List[str]:
@@ -56,8 +61,204 @@ def get_available_tickers(data_dir: Path | str = "data/raw/price_history/STAGE_1
 
 
 def safe_divide(numerator: pd.Series, denominator: pd.Series) -> pd.Series:
-    denom = denominator.replace({0: np.nan})
-    return numerator / denom
+    """Divides two Series, returning np.nan where the denominator is zero."""
+    return numerator / denominator.replace(0, np.nan)
+
+
+def _validate_and_prepare_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Validates input and prepares a clean copy for calculations."""
+    if not isinstance(df, pd.DataFrame):
+        raise TypeError("Input 'df' must be a pandas DataFrame.")
+
+    if df.empty:
+        logger.warning("Input DataFrame is empty. Returning an empty copy.")
+        return df.copy()
+
+    # Define all columns that are absolutely required for the function to run
+    required_columns: Set[str] = {
+        'total_current_assets', 'total_current_liabilities', 'cash_and_cash_equivalents',
+        'total_debt', 'total_shareholder_equity', 'total_assets', 'net_income',
+        'operating_income', 'revenue', 'weighted_average_shares'
+    }
+
+    missing_cols = required_columns - set(df.columns)
+    if missing_cols:
+        raise ValueError(f"DataFrame is missing required columns: {sorted(list(missing_cols))}")
+
+    return df.copy()
+
+
+def _ensure_optional_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Ensures optional columns exist, filling with defaults if not."""
+    optional_columns = {
+        'short_term_investments': 0, 'accounts_receivable': 0, 'inventory': 0,
+        'cost_of_goods_sold': np.nan, 'gross_profit': np.nan, 'ebitda': np.nan,
+        'long_term_debt': 0, 'interest_expense': 0, 'goodwill': 0,
+        'intangible_assets': 0, 'retained_earnings': np.nan,
+        'accumulated_other_comprehensive_income': 0, 'income_before_tax': np.nan,
+        'accounts_payable': 0, 'eps': np.nan, 'adj_close': np.nan,
+        'short_term_debt': 0, 'net_debt': np.nan
+    }
+
+    for col, default in optional_columns.items():
+        if col not in df.columns:
+            df[col] = default
+            logger.debug(f"Added missing optional column '{col}' with default: {default}")
+
+    return df
+
+
+def _calculate_liquidity_ratios(df: pd.DataFrame) -> pd.DataFrame:
+    """Calculates liquidity ratios."""
+    return df.assign(
+        current_ratio=safe_divide(
+            df['total_current_assets'],
+            df['total_current_liabilities']
+        ),
+        quick_ratio=safe_divide(
+            df['cash_and_cash_equivalents'] + df['short_term_investments'] + df['accounts_receivable'],
+            df['total_current_liabilities']
+        ),
+        cash_ratio=safe_divide(
+            df['cash_and_cash_equivalents'],
+            df['total_current_liabilities']
+        )
+    )
+
+
+def _calculate_leverage_ratios(df: pd.DataFrame) -> pd.DataFrame:
+    """Calculates leverage (debt) ratios."""
+    return df.assign(
+        debt_to_equity=safe_divide(
+            df['total_debt'],
+            df['total_shareholder_equity']
+        ),
+        debt_to_assets=safe_divide(
+            df['total_debt'],
+            df['total_assets']
+        ),
+        net_debt_to_ebitda=safe_divide(
+            df['net_debt'],
+            df['ebitda']
+        ),
+        long_term_debt_to_equity=safe_divide(
+            df['long_term_debt'],
+            df['total_shareholder_equity']
+        )
+    )
+
+
+def _calculate_profitability_ratios(df: pd.DataFrame) -> pd.DataFrame:
+    """Calculates profitability ratios."""
+    return df.assign(
+        roa=safe_divide(
+            df['net_income'],
+            df['total_assets']
+        ),
+        roe=safe_divide(
+            df['net_income'],
+            df['total_shareholder_equity']
+        ),
+        roic=safe_divide(
+            df['operating_income'],
+            df['total_debt'] + df['total_shareholder_equity']
+        )
+    )
+
+
+def _calculate_valuation_ratios(df: pd.DataFrame) -> pd.DataFrame:
+    """Calculates market valuation ratios."""
+    book_value_per_share = safe_divide(
+        df['total_shareholder_equity'],
+        df['weighted_average_shares']
+    )
+
+    revenue_per_share = safe_divide(
+        df['revenue'],
+        df['weighted_average_shares']
+    )
+
+    eps_bvps_product = df['eps'] * book_value_per_share
+    graham_number = np.where(
+        (eps_bvps_product > 0) & (~eps_bvps_product.isna()),
+        np.sqrt(22.5 * eps_bvps_product),
+        np.nan
+    )
+
+    return df.assign(
+        book_value_per_share=book_value_per_share,
+        price_to_book=safe_divide(
+            df['adj_close'],
+            book_value_per_share
+        ),
+        price_to_sales=safe_divide(
+            df['adj_close'],
+            revenue_per_share
+        ),
+        price_to_earnings=safe_divide(
+            df['adj_close'],
+            df['eps']
+        ),
+        graham_number=graham_number,
+        graham_number_vs_price=safe_divide(
+            graham_number,
+            df['adj_close']
+        ),
+        market_cap=(df['adj_close'] * df['weighted_average_shares']),
+        enterprise_value=(
+            (df['adj_close'] * df['weighted_average_shares']) + df['net_debt']
+        ),
+        earnings_yield=safe_divide(
+            df['operating_income'],
+            (df['adj_close'] * df['weighted_average_shares']) + df['net_debt']
+        )
+    )
+
+
+def calculate_financial_ratios(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculates a comprehensive set of financial ratios for a given DataFrame.
+
+    This function serves as a pipeline that validates the input data, ensures all
+    necessary columns are present, and then calculates various categories of
+    financial ratios in a structured manner.
+
+    Args:
+        df (pd.DataFrame): DataFrame containing raw financial statement data.
+            It must include a set of required columns for core calculations.
+
+    Returns:
+        pd.DataFrame: A new DataFrame with added columns for each calculated ratio.
+
+    Raises:
+        TypeError: If the input 'df' is not a pandas DataFrame.
+        ValueError: If the DataFrame does not contain all required columns.
+    """
+    try:
+        # Step 1: Validate and prepare a clean copy of the DataFrame
+        prepared_df = _validate_and_prepare_df(df)
+
+        # Step 2: Ensure all optional columns exist, adding them with defaults if not
+        df_with_all_cols = _ensure_optional_columns(prepared_df)
+
+        # Step 3: Sequentially calculate ratio categories
+        final_df = (
+            df_with_all_cols
+            .pipe(_calculate_liquidity_ratios)
+            .pipe(_calculate_leverage_ratios)
+            .pipe(_calculate_profitability_ratios)
+            .pipe(_calculate_valuation_ratios)
+        )
+
+        logger.info("Successfully calculated all financial ratios.")
+        return final_df
+
+    except (TypeError, ValueError) as e:
+        logger.error(f"Input data validation failed: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"An unexpected error occurred during ratio calculation: {e}")
+        raise
 
 
 def calculate_portfolio_xirr(df: pd.DataFrame, X, pred, best_thresh, label, label_length=12, investment_amount=1000):
@@ -171,3 +372,78 @@ def calculate_portfolio_xirr(df: pd.DataFrame, X, pred, best_thresh, label, labe
         'final_capital': capital,
         'profit': profit
     }
+
+
+def filter_sp500_companies(
+    df: pd.DataFrame,
+    sp500_path: Path | str = "data/raw/tickers_sp500.csv"
+) -> pd.DataFrame:
+    """
+    Filters a DataFrame to include only rows for tickers that were part of
+    the S&P 500 in a given quarter.
+
+    This function performs the filtering by:
+    1. Loading the historical S&P 500 constituents from a CSV file.
+    2. Creating a set of valid (quarter, ticker) pairs for efficient lookup.
+    3. Applying a vectorized mask to the input DataFrame to select matching rows.
+
+    Args:
+        df (pd.DataFrame): The input DataFrame to filter. Must contain 'date'
+            (as pd.Period[Q-DEC]) and 'ticker' columns.
+        sp500_path (Path | str, optional): The path to the CSV file containing
+            historical S&P 500 constituents. The CSV must have 'date' and
+            'tickers' (comma-separated string) columns.
+            Defaults to "data/raw/tickers_sp500.csv".
+
+    Returns:
+        pd.DataFrame: A new DataFrame containing only the filtered rows.
+
+    Raises:
+        FileNotFoundError: If the sp500_path does not exist.
+        KeyError: If the required columns are missing in the input DataFrame or CSV file.
+    """
+    sp500_path = Path(sp500_path)
+    logger.info(f"Filtering DataFrame based on S&P 500 constituents from {sp500_path}")
+
+    try:
+        # --- Step 1: Load and prepare the S&P 500 data ---
+        sp500_df = pd.read_csv(sp500_path)
+        sp500_df['date'] = pd.to_datetime(sp500_df['date'])
+
+        # Convert date to the same quarterly period format as the main DataFrame
+        sp500_df['quarter'] = sp500_df['date'].dt.to_period('Q-DEC')
+
+        # --- Step 2: Create the lookup set using vectorized operations (much faster) ---
+        # Explode the comma-separated ticker strings into multiple rows
+        sp500_long = (
+            sp500_df.assign(ticker=sp500_df['tickers'].str.split(','))
+            .explode('ticker')
+            .reset_index(drop=True)
+        )
+        # Strip whitespace from ticker symbols
+        sp500_long['ticker'] = sp500_long['ticker'].str.strip()
+
+        # Create the set of (quarter, ticker) tuples
+        sp500_pairs = set(zip(sp500_long['quarter'], sp500_long['ticker']))
+        logger.debug(f"Created a lookup set with {len(sp500_pairs)} (quarter, ticker) pairs.")
+
+        # --- Step 3: Filter the main DataFrame efficiently ---
+        # The core business logic remains: check for membership in the set.
+        # This implementation avoids a slow .apply() loop.
+        # We create a temporary series of tuples from the DataFrame rows.
+        df_pairs = pd.Series(zip(df['date'], df['ticker']))
+
+        # The `isin` method on a Series is highly optimized for checking against a set.
+        mask = df_pairs.isin(sp500_pairs)
+
+        filtered_df = df[mask].copy()
+
+        logger.info(f"Filtering complete. Kept {len(filtered_df)} of {len(df)} rows.")
+        return filtered_df
+
+    except FileNotFoundError:
+        logger.error(f"S&P 500 constituents file not found at: {sp500_path}")
+        raise
+    except KeyError as e:
+        logger.error(f"A required column is missing from the input data: {e}")
+        raise

@@ -1,66 +1,143 @@
+import logging
+
 import pandas as pd
 from tqdm import tqdm
 
-from src.feature_engineering.build_labels import build_triple_barier_labels_custom  # krok 1
-from src.data_preprocessing.data_preprocessor import (
-    deduplicate_price_data,  # krok 2
-    remove_overlapped_observations,  # krok 3
-    load_data,  # krok 4
-    merge_data,  # krok 5
-    save_processed_data,  # krok 6
-    create_abt  # krok 7
+from app.feature_engineering.build_labels import build_triple_barier_labels_custom
+from app.data_preprocessing.data_preprocessor import (
+    deduplicate_price_data,
+    remove_overlapped_observations,
+    load_data,
+    merge_data,
+    save_processed_data,
+    create_abt,
 )
-from src.utils.tools import (
-    get_avalilable_tickers,
+from app.utils.tools import (
+    get_available_tickers,
     filter_sp500_companies,
-    calculate_financial_ratios
+    calculate_financial_ratios,
 )
+from app.config import settings
+
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    handlers=[
+        logging.FileHandler("pipeline.log"),  # Save logs to a file
+        logging.StreamHandler()               # Also print logs to the console
+    ]
+)
+
+
+def run_label_building() -> None:
+    """Stage 1: Build triple-barrier labels for each ticker."""
+    logging.info("--- Stage 1: Starting label construction ---")
+
+    # Paths are now derived from the central settings
+    raw_path = settings.base_path / "raw"
+    stage1_dir = raw_path / "price_history" / "STAGE_1"
+    stage2_dir = raw_path / "price_history" / "STAGE_2"
+
+    tickers = get_available_tickers(str(stage1_dir))
+    logging.info(f"Found {len(tickers)} tickers for label building.")
+
+    for ticker in tqdm(tickers, desc="Stage 1: Building labels"):
+        build_triple_barier_labels_custom(
+            ticker=ticker,
+            input_dir=stage1_dir,
+            output_dir=stage2_dir,
+            # Parameters are unpacked from the type-safe settings model
+            **settings.label_params.model_dump()
+        )
+    logging.info("--- Stage 1: Label construction finished ---")
+
+
+def run_price_preprocessing() -> None:
+    """Stages 2 & 3: Deduplicate price data and remove overlapping observations."""
+    logging.info("--- Stages 2 & 3: Starting price preprocessing ---")
+    raw_path = settings.base_path / "raw"
+    stage2_dir = raw_path / "price_history" / "STAGE_2"
+    stage3_dir = raw_path / "price_history" / "STAGE_3"
+    stage4_dir = raw_path / "price_history" / "STAGE_4"
+
+    tickers = get_available_tickers(str(stage2_dir))
+
+    # Stage 2: Deduplicate to get the last price per quarter
+    for ticker in tqdm(tickers, desc="Stage 2: Deduplicating"):
+        deduplicate_price_data(ticker, input_dir=stage2_dir, output_dir=stage3_dir)
+
+    # Stage 3: Remove overlaps to ensure target independence
+    label_time = settings.overlap_params.label_time
+    for idx, ticker in enumerate(tqdm(tickers, desc="Stage 3: Removing overlaps")):
+        offset = idx % label_time
+        remove_overlapped_observations(ticker, offset, label_time, input_dir=stage3_dir, output_dir=stage4_dir)
+    logging.info("--- Stages 2 & 3: Price preprocessing finished ---")
+
+
+def run_data_merge_and_save() -> None:
+    """Stages 4, 5, 6: Find common tickers, load, merge, and save processed data."""
+    logging.info("--- Stages 4-6: Starting data merging and saving ---")
+    raw_path = settings.base_path / "raw"
+    processed_path = settings.base_path / "processed"
+
+    # Use sets for efficient intersection of available tickers
+    tickers_bs = set(get_available_tickers(str(raw_path / 'balance_sheets')))
+    tickers_cs = set(get_available_tickers(str(raw_path / 'company_profiles')))
+    tickers_is = set(get_available_tickers(str(raw_path / 'income_statements')))
+    tickers_pr = set(get_available_tickers(str(raw_path / 'price_history' / 'STAGE_4')))
+
+    common_tickers = tickers_pr.intersection(tickers_bs, tickers_cs, tickers_is)
+    logging.info(f"Found {len(common_tickers)} tickers with all required data sources.")
+
+    for ticker in tqdm(common_tickers, desc="Stages 4-6: Merging data"):
+        data = load_data(ticker, base_path=raw_path)          # Stage 4
+        merged_df = merge_data(data)                          # Stage 5
+        save_processed_data(merged_df, ticker, base_path=processed_path)  # Stage 6
+    logging.info("--- Stages 4-6: Data merging and saving finished ---")
+
+
+def run_abt_creation_and_cleaning() -> None:
+    """Stage 7 & post-processing: Create and clean the final Analytical Base Table."""
+    logging.info("--- Stage 7: Starting ABT creation and cleaning ---")
+    processed_path = settings.base_path / "data/processed"
+    abt_path = settings.base_path / "data/abt"
+    target_label = settings.target_label_name
+
+    # Stage 7: Create the initial ABT
+    create_abt(target=target_label, input_path=processed_path, output_path=abt_path)
+
+    # Post-processing steps on the ABT
+    logging.info("Starting ABT post-processing.")
+    abt_raw_file = abt_path / f"{target_label}.feather"
+    abt_df = pd.read_feather(abt_raw_file)
+
+    abt_clean = filter_sp500_companies(abt_df)
+    abt_clean = calculate_financial_ratios(abt_clean)
+    abt_clean = abt_clean.sort_values(by='date', ascending=True).reset_index(drop=True)
+
+    abt_clean_file = abt_path / f"{target_label}_clean.feather"
+    abt_clean.to_feather(abt_clean_file)
+    logging.info(f"Final clean ABT saved to {abt_clean_file}")
+    logging.info("--- Stage 7: ABT creation and cleaning finished ---")
 
 
 def main():
-    label = 'label_1000_100_250'
-    # krok 1 - buduję zmienne celu
-    tickers = get_avalilable_tickers()
-    for ticker in tqdm(tickers):
-        build_triple_barier_labels_custom(
-            ticker=ticker,
-            profit_targets=[1000],  # nie stopuję algorytmu, jeśli chodzi o maksymalny zysk; będę sprzedawać akcje po ok. roku, niezależnie od zysku, czy straty
-            stop_loses=[100],  # dopuszczam całkowitą stratę
-            max_days=[250],  # chcę trzymać akcje ok. roku - 250 dni roboczych
-            overwrite=True,
-            verbose=False
-        )
-
-    # krok 2 - usuwam nadmiarowe dane dotyczące cen
-    tickers = get_avalilable_tickers()
-    for ticker in tqdm(tickers):
-        deduplicate_price_data(ticker, verbose=False)
-
-    # krok 3 - usuwam nachodzące na siebie labele
-    tickers = get_avalilable_tickers()
-    label_time = 5  # efektywnie 4 obserwacji przerwy; 1 rok (4 kwartały) + 1 kwartał marginesu
-    for idx, ticker in enumerate(tqdm(tickers)):
-        offset = idx % label_time
-        remove_overlapped_observations(ticker, offset, label_time, verbose=False)
-
-    tickers_bs = get_avalilable_tickers('data/raw/balance_sheets/')
-    tickers_cs = get_avalilable_tickers('data/raw/company_profiles/')
-    tickers_is = get_avalilable_tickers('data/raw/income_statements/')
-    tickers_pr = get_avalilable_tickers('data/raw/price_history/STAGE_4/')
-
-    for ticker in tqdm(tickers_pr):
-        if (ticker in tickers_bs) & (ticker in tickers_cs) & (ticker in tickers_is):
-            data = load_data(ticker)  # krok 4 - wczytanie danych
-            merged_df = merge_data(data)  # krok 5 - połączenie danych z kroku 4
-            save_processed_data(merged_df, ticker)  # krok 6 - zapisanie połączonych danych
-    create_abt(target=label)  # krok 7 - utworzenie ABT
-
-    # drobne korekty w ABT
-    abt = pd.read_feather('data/abt/{}.feather'.format(label))
-    abt_clean = filter_sp500_companies(abt)
-    abt_clean = calculate_financial_ratios(abt_clean)
-    abt_clean = abt_clean.sort_values(by='date', ascending=True).reset_index(drop=True)
-    abt_clean.to_feather('data/abt/{}_clean.feather'.format(label))
+    """Main pipeline orchestrator."""
+    logging.info("=========================================")
+    logging.info("=== STARTING DATA PROCESSING PIPELINE ===")
+    logging.info("=========================================")
+    try:
+        run_label_building()
+        run_price_preprocessing()
+        run_data_merge_and_save()
+        run_abt_creation_and_cleaning()
+        logging.info("===========================================")
+        logging.info("=== PIPELINE COMPLETED SUCCESSFULLY! ===")
+        logging.info("===========================================")
+    except Exception:
+        logging.critical("!!! PIPELINE FAILED WITH A CRITICAL ERROR:", exc_info=True)
 
 
 if __name__ == "__main__":

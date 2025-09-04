@@ -16,3 +16,4 @@ data/raw/price_history/
 .ipynb_checkpoints/
 notebooks/
 tmp_*
+*.log
