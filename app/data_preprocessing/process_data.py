@@ -21,8 +21,7 @@ from app.config import settings
 
 
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 
 
@@ -44,7 +43,7 @@ def run_label_building() -> None:
             input_dir=stage1_dir,
             output_dir=stage2_dir,
             # Parameters are unpacked from the type-safe settings model
-            **settings.label_params.model_dump()
+            **settings.label_params.model_dump(),
         )
     logging.info("--- Stage 1: Label construction finished ---")
 
@@ -67,7 +66,9 @@ def run_price_preprocessing() -> None:
     label_time = settings.overlap_params.label_time
     for idx, ticker in enumerate(tqdm(tickers, desc="Stage 3: Removing overlaps")):
         offset = idx % label_time
-        remove_overlapped_observations(ticker, offset, label_time, input_dir=stage3_dir, output_dir=stage4_dir)
+        remove_overlapped_observations(
+            ticker, offset, label_time, input_dir=stage3_dir, output_dir=stage4_dir
+        )
     logging.info("--- Stages 2 & 3: Price preprocessing finished ---")
 
 
@@ -78,17 +79,17 @@ def run_data_merge_and_save() -> None:
     processed_path = settings.base_path / "processed"
 
     # Use sets for efficient intersection of available tickers
-    tickers_bs = set(get_available_tickers(str(raw_path / 'balance_sheets')))
-    tickers_cs = set(get_available_tickers(str(raw_path / 'company_profiles')))
-    tickers_is = set(get_available_tickers(str(raw_path / 'income_statements')))
-    tickers_pr = set(get_available_tickers(str(raw_path / 'price_history' / 'STAGE_4')))
+    tickers_bs = set(get_available_tickers(str(raw_path / "balance_sheets")))
+    tickers_cs = set(get_available_tickers(str(raw_path / "company_profiles")))
+    tickers_is = set(get_available_tickers(str(raw_path / "income_statements")))
+    tickers_pr = set(get_available_tickers(str(raw_path / "price_history" / "STAGE_4")))
 
     common_tickers = tickers_pr.intersection(tickers_bs, tickers_cs, tickers_is)
     logging.info(f"Found {len(common_tickers)} tickers with all required data sources.")
 
     for ticker in tqdm(common_tickers, desc="Stages 4-6: Merging data"):
-        data = load_data(ticker, base_path=raw_path)          # Stage 4
-        merged_df = merge_data(data)                          # Stage 5
+        data = load_data(ticker, base_path=raw_path)  # Stage 4
+        merged_df = merge_data(data)  # Stage 5
         save_processed_data(merged_df, ticker, base_path=processed_path)  # Stage 6
     logging.info("--- Stages 4-6: Data merging and saving finished ---")
 
@@ -110,7 +111,7 @@ def run_abt_creation_and_cleaning() -> None:
 
     abt_clean = filter_sp500_companies(abt_df)
     abt_clean = calculate_financial_ratios(abt_clean)
-    abt_clean = abt_clean.sort_values(by='date', ascending=True).reset_index(drop=True)
+    abt_clean = abt_clean.sort_values(by="date", ascending=True).reset_index(drop=True)
 
     abt_clean_file = abt_path / f"{target_label}_clean.feather"
     abt_clean.to_feather(abt_clean_file)

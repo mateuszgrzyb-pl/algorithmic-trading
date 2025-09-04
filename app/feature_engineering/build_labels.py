@@ -13,7 +13,7 @@ def build_triple_barier_labels_custom(
     profit_targets: List[float],
     stop_losses: List[float],
     max_days_list: List[int],
-    overwrite: bool = False
+    overwrite: bool = False,
 ) -> None:
     """
     Generates and saves triple barrier labels for a given stock ticker.
@@ -41,41 +41,66 @@ def build_triple_barier_labels_custom(
                     are not equal.
     """
     if not (len(profit_targets) == len(stop_losses) == len(max_days_list)):
-        raise ValueError("Input lists (profit_targets, stop_losses, max_days_list) must have the same length.")
+        raise ValueError(
+            "Input lists (profit_targets, stop_losses, max_days_list) must have the same length."
+        )
 
-    input_path = settings.base_path / "data" / "raw" / "price_history" / "STAGE_1" / f"{ticker}.feather"
-    output_path = settings.base_path / "data" / "raw" / "price_history" / "STAGE_2" / f"{ticker}.feather"
+    input_path = (
+        settings.base_path
+        / "data"
+        / "raw"
+        / "price_history"
+        / "STAGE_1"
+        / f"{ticker}.feather"
+    )
+    output_path = (
+        settings.base_path
+        / "data"
+        / "raw"
+        / "price_history"
+        / "STAGE_2"
+        / f"{ticker}.feather"
+    )
 
     if not overwrite and output_path.exists():
-        logger.info(f"Labels for {ticker} already exist. Skipping. Use overwrite=True to regenerate.")
+        logger.info(
+            f"Labels for {ticker} already exist. Skipping. Use overwrite=True to regenerate."
+        )
         return
 
     if not input_path.exists():
-        logger.error(f"Input price data for {ticker} not found at {input_path}. Skipping.")
+        logger.error(
+            f"Input price data for {ticker} not found at {input_path}. Skipping."
+        )
         raise FileNotFoundError(f"Input file not found: {input_path}")
 
-    logger.info(f"Processing {ticker}: Generating {len(profit_targets)} sets of labels.")
+    logger.info(
+        f"Processing {ticker}: Generating {len(profit_targets)} sets of labels."
+    )
 
     try:
         data = pd.read_feather(input_path)
 
         for pt, sl, md in zip(profit_targets, stop_losses, max_days_list):
-            label_prefix = f'label_{pt}_{sl}_{md}'
+            label_prefix = f"label_{pt}_{sl}_{md}"
             logger.debug(f"Generating labels for {ticker} with prefix: {label_prefix}")
 
             data = triple_barrier_labeling_custom(
                 df=data,
-                price_col='adj_close',
+                price_col="adj_close",
                 label_name=label_prefix,
-                date_col='date',
+                date_col="date",
                 profit_target=pt,
                 stop_loss=sl,
-                max_days=md
+                max_days=md,
             )
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
         data.to_feather(output_path)
-        logger.info(f'Successfully saved labeled data for {ticker} to {output_path}')
+        logger.info(f"Successfully saved labeled data for {ticker} to {output_path}")
 
     except Exception as e:
-        logger.error(f"An unexpected error occurred while processing {ticker}: {e}", exc_info=True)
+        logger.error(
+            f"An unexpected error occurred while processing {ticker}: {e}",
+            exc_info=True,
+        )

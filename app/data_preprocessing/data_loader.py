@@ -14,7 +14,7 @@ def _create_toolkit(
     tickers: List[str],
     api_key: str,
     start_date: Optional[str] = None,
-    end_date: Optional[str] = None
+    end_date: Optional[str] = None,
 ) -> Toolkit:
     """
     Create a FinanceToolkit instance with error handling.
@@ -40,17 +40,14 @@ def _create_toolkit(
 
     try:
         toolkit_kwargs = {
-            'tickers': tickers,
-            'api_key': api_key,
-            'quarterly': True,
-            'progress_bar': False
+            "tickers": tickers,
+            "api_key": api_key,
+            "quarterly": True,
+            "progress_bar": False,
         }
 
         if start_date and end_date:
-            toolkit_kwargs.update({
-                'start_date': start_date,
-                'end_date': end_date
-            })
+            toolkit_kwargs.update({"start_date": start_date, "end_date": end_date})
 
         return Toolkit(**toolkit_kwargs)
 
@@ -60,10 +57,7 @@ def _create_toolkit(
 
 
 def download_price_history(
-    tickers: List[str],
-    start_date: str,
-    end_date: str,
-    api_key: str
+    tickers: List[str], start_date: str, end_date: str, api_key: str
 ) -> None:
     """
     Download historical price data for given tickers.
@@ -75,13 +69,16 @@ def download_price_history(
         api_key: FinanceToolkit API key
     """
     for ticker in tickers:
-        output_path = f'data/raw/price_history/STAGE_1/{ticker}.feather'
+        output_path = f"data/raw/price_history/STAGE_1/{ticker}.feather"
 
         try:
             logger.debug(f"Downloading price history for {ticker}")
 
             toolkit = _create_toolkit([ticker], api_key, start_date, end_date)
-            data = toolkit.get_historical_data(period='daily', return_column='Adj Close', )
+            data = toolkit.get_historical_data(
+                period="daily",
+                return_column="Adj Close",
+            )
 
             if data.empty:
                 logger.warning(f"No price data returned for {ticker}")
@@ -90,18 +87,17 @@ def download_price_history(
             ensure_directory(os.path.dirname(output_path))
             data.reset_index(inplace=True)
 
-            columns_to_select = [
-                ('date', ''),
-                ('Adj Close', ticker)
-            ]
+            columns_to_select = [("date", ""), ("Adj Close", ticker)]
 
             available_columns = data.columns.tolist()
             if len(available_columns) < 2:
-                logger.error(f"Unexpected data structure for {ticker}: {available_columns}")
+                logger.error(
+                    f"Unexpected data structure for {ticker}: {available_columns}"
+                )
                 continue
 
             data = data.loc[:, columns_to_select]
-            data.columns = ['date', 'adj_close']
+            data.columns = ["date", "adj_close"]
 
             if data.isnull().all().any():
                 logger.warning(f"Price data for {ticker} contains all null values")
@@ -115,10 +111,7 @@ def download_price_history(
 
 
 def download_balance_sheets(
-    tickers: List[str],
-    start_date: str,
-    end_date: str,
-    api_key: str
+    tickers: List[str], start_date: str, end_date: str, api_key: str
 ) -> None:
     """
     Download balance sheet data for given tickers.
@@ -130,7 +123,7 @@ def download_balance_sheets(
         api_key: FinanceToolkit API key
     """
     for ticker in tickers:
-        output_path = f'data/raw/balance_sheets/{ticker}.feather'
+        output_path = f"data/raw/balance_sheets/{ticker}.feather"
 
         try:
             logger.debug(f"Downloading balance sheet for {ticker}")
@@ -156,10 +149,7 @@ def download_balance_sheets(
 
 
 def download_income_statements(
-    tickers: List[str],
-    start_date: str,
-    end_date: str,
-    api_key: str
+    tickers: List[str], start_date: str, end_date: str, api_key: str
 ) -> None:
     """
     Download income statement data for given tickers.
@@ -171,7 +161,7 @@ def download_income_statements(
         api_key: FinanceToolkit API key
     """
     for ticker in tickers:
-        output_path = f'data/raw/income_statements/{ticker}.feather'
+        output_path = f"data/raw/income_statements/{ticker}.feather"
 
         try:
             logger.debug(f"Downloading income statement for {ticker}")
@@ -196,10 +186,7 @@ def download_income_statements(
             logger.error(error_msg)
 
 
-def download_company_profiles(
-    tickers: List[str],
-    api_key: str
-) -> None:
+def download_company_profiles(tickers: List[str], api_key: str) -> None:
     """
     Download company profile data for given tickers.
 
@@ -208,7 +195,7 @@ def download_company_profiles(
         api_key: FinanceToolkit API key
     """
     for ticker in tickers:
-        output_path = f'data/raw/company_profiles/{ticker}.feather'
+        output_path = f"data/raw/company_profiles/{ticker}.feather"
 
         try:
             logger.debug(f"Downloading company profile for {ticker}")
@@ -223,16 +210,18 @@ def download_company_profiles(
             ensure_directory(os.path.dirname(output_path))
             data = data.transpose().reset_index(drop=True)
 
-            if 'Symbol' in data.columns:
-                data.drop(columns=['Symbol'], inplace=True)
+            if "Symbol" in data.columns:
+                data.drop(columns=["Symbol"], inplace=True)
 
             data.columns = standardize_column_names(data.columns)
 
-            required_columns = ['sector', 'industry', 'company_name']
+            required_columns = ["sector", "industry", "company_name"]
             available_columns = [col for col in required_columns if col in data.columns]
 
             if not available_columns:
-                logger.warning(f"No required columns found for {ticker}: {data.columns.tolist()}")
+                logger.warning(
+                    f"No required columns found for {ticker}: {data.columns.tolist()}"
+                )
                 data.to_feather(output_path)
             else:
                 data[available_columns].to_feather(output_path)

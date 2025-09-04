@@ -9,7 +9,7 @@ def triple_barrier_labeling_custom(
     date_col: Optional[str] = None,
     profit_target: float = 40.0,
     stop_loss: float = 20.0,
-    max_days: int = 250
+    max_days: int = 250,
 ) -> pd.DataFrame:
     """
     Implements a custom Triple Barrier Method (first introduced by Marcos López de Prado) to generate labels for financial time series.
@@ -97,9 +97,9 @@ def triple_barrier_labeling_custom(
             pct_changes[i] = ((prices[-1] - current_price) / current_price) * 100
 
     # Adding new columns to DataFrame
-    df[f'{label_name}_target'] = labels
-    df[f'{label_name}_final_price'] = final_prices
-    df[f'{label_name}_days_to_event'] = days_to_events
-    df[f'{label_name}_event_date'] = event_dates
-    df[f'{label_name}_pct_change'] = pct_changes
+    df[f"{label_name}_target"] = labels
+    df[f"{label_name}_final_price"] = final_prices
+    df[f"{label_name}_days_to_event"] = days_to_events
+    df[f"{label_name}_event_date"] = event_dates
+    df[f"{label_name}_pct_change"] = pct_changes
     return df

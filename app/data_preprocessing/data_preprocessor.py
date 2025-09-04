@@ -8,13 +8,14 @@ import pandas as pd
 from app.utils.tools import get_available_tickers
 
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
 
-def load_data(ticker: str, base_path: Path | str = "data/raw") -> Dict[str, pd.DataFrame]:
+def load_data(
+    ticker: str, base_path: Path | str = "data/raw"
+) -> Dict[str, pd.DataFrame]:
     """
     The function attempts to read up to four data types (price history,
     balance sheets, income statements, company profiles) from feather
@@ -206,7 +207,9 @@ def create_abt(
         raise ValueError(msg)
 
     combined_df = pd.concat(all_dataframes, ignore_index=True)
-    logger.info(f"Combined data into a single DataFrame with shape: {combined_df.shape}")
+    logger.info(
+        f"Combined data into a single DataFrame with shape: {combined_df.shape}"
+    )
 
     all_labels = [col for col in combined_df.columns if "label" in col]
     labels_to_drop = [label for label in all_labels if target not in label]
@@ -324,7 +327,9 @@ def remove_overlapped_observations(
     """
     input_path = Path(input_dir) / f"{ticker}.feather"
     output_path = Path(output_dir) / f"{ticker}.feather"
-    logger.info(f"Downsampling data for {ticker} with offset={offset}, step={label_time}")
+    logger.info(
+        f"Downsampling data for {ticker} with offset={offset}, step={label_time}"
+    )
 
     try:
         df = pd.read_feather(input_path)
@@ -343,7 +348,9 @@ def remove_overlapped_observations(
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
         downsampled_df.to_feather(output_path)
-        logger.info(f"Successfully saved downsampled data for {ticker} to {output_path}")
+        logger.info(
+            f"Successfully saved downsampled data for {ticker} to {output_path}"
+        )
 
     except FileNotFoundError:
         logger.error(f"Input file not found for ticker {ticker} at {input_path}")

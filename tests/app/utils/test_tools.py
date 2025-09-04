@@ -5,7 +5,7 @@ from app.utils.tools import (
     calculate_portfolio_xirr,
     ensure_directory,
     get_available_tickers,
-    standardize_column_names
+    standardize_column_names,
 )
 
 
@@ -86,13 +86,15 @@ def test_get_available_tickers_empty_dir(tmp_path):
 
 @pytest.fixture
 def sample_df():
-    df = pd.DataFrame({
-        "date": pd.PeriodIndex(["2024-01-01", "2024-04-01"], freq='Q-DEC'),
-        "ticker": ["AAPL", "GOOG"],
-        "adj_close": [100, 200],
-        "tb_event_date": pd.to_datetime(["2024-06-01", "2024-09-01"]),
-        "tb_pct_change": [10, -5],
-    })
+    df = pd.DataFrame(
+        {
+            "date": pd.PeriodIndex(["2024-01-01", "2024-04-01"], freq="Q-DEC"),
+            "ticker": ["AAPL", "GOOG"],
+            "adj_close": [100, 200],
+            "tb_event_date": pd.to_datetime(["2024-06-01", "2024-09-01"]),
+            "tb_pct_change": [10, -5],
+        }
+    )
     return df
 
 

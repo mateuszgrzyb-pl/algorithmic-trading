@@ -13,8 +13,10 @@ ENV_FILE_PATH = PROJECT_ROOT / ".env"
 # --- Nested Configuration Models ---
 # Grouping related parameters into sub-models enhances clarity and organization.
 
+
 class LabelParams(BaseModel):
     """Parameters for the triple-barrier labeling process."""
+
     profit_targets: List[int] = [1000]
     stop_loses: List[int] = [100]
     max_days: List[int] = [250]
@@ -23,11 +25,13 @@ class LabelParams(BaseModel):
 
 class OverlapParams(BaseModel):
     """Parameters for removing overlapping observations."""
+
     label_time: int = 5
 
 
 # --- Main Settings Class ---
 # This class aggregates all configuration for the application.
+
 
 class Settings(BaseSettings):
     """
@@ -36,6 +40,7 @@ class Settings(BaseSettings):
     Aggregates all configuration parameters and loads them from environment
     variables or a .env file, providing a single, type-safe source of truth.
     """
+
     finance_toolkit_key: str
     analysis_start_date: Optional[date] = None
     analysis_end_date: Optional[date] = None
@@ -52,7 +57,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=str(ENV_FILE_PATH) if ENV_FILE_PATH.exists() else None,
         env_file_encoding="utf-8",
-        env_nested_delimiter='__'
+        env_nested_delimiter="__",
     )
 
 

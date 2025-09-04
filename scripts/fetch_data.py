@@ -5,22 +5,18 @@ import logging
 from tqdm import tqdm
 
 from app.config import settings
-from app.utils.tools import (
-    get_available_tickers,
-    load_sp500_tickers
-)
+from app.utils.tools import get_available_tickers, load_sp500_tickers
 from app.data_preprocessing.data_loader import (
     download_price_history,
     download_balance_sheets,
     download_income_statements,
-    download_company_profiles
+    download_company_profiles,
 )
 
 
 sys.path.append(str(Path(__file__).parent.parent))
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -82,7 +78,9 @@ def main() -> None:
         logger.info(f"Already downloaded tickers: {len(available_tickers)}")
 
         # Find tickers that need to be downloaded
-        tickers_to_download = ['AAPL']  # [ticker for ticker in all_tickers if ticker not in available_tickers]
+        tickers_to_download = [
+            "AAPL"
+        ]  # [ticker for ticker in all_tickers if ticker not in available_tickers]
         logger.info(f"Tickers to download: {len(tickers_to_download)}")
 
         if not tickers_to_download:
@@ -93,7 +91,7 @@ def main() -> None:
         successful_downloads = 0
         failed_downloads = []
 
-        for ticker in tqdm(tickers_to_download, desc='Downloading financial data'):
+        for ticker in tqdm(tickers_to_download, desc="Downloading financial data"):
             success = download_ticker_data(ticker)
             if success:
                 successful_downloads += 1
