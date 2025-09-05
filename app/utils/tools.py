@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import List, Set
+from typing import List, Set, Any, Dict, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -259,13 +259,13 @@ def calculate_financial_ratios(df: pd.DataFrame) -> pd.DataFrame:
 
 def calculate_portfolio_xirr(
     df: pd.DataFrame,
-    X,
-    pred,
-    best_thresh,
-    label,
-    label_length=12,
-    investment_amount=1000,
-):
+    X: pd.Index,
+    pred: Union[pd.Series, np.ndarray],
+    best_thresh: float,
+    label: str,
+    label_length: int = 12,
+    investment_amount: float = 1000.0,
+) -> Dict[str, Any]:
     """Simulate a trading strategy and calculate its XIRR performance.
 
     The function builds a simple portfolio backtest by:
